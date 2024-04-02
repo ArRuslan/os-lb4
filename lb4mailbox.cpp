@@ -102,6 +102,7 @@ uint64_t MailBox::getCurrentSize() {
         file.seekg(current_pos);
     }
 
+    delete[] buf;
     file.close();
 
     return total_size;
@@ -131,10 +132,43 @@ void MailBox::addEntry(MailboxEntry* entry) {
     file.close();
 }
 
-MailboxEntry* MailBox::readEntry(uint32_t index, bool del) {
-    //
+MailboxEntry* MailBox::readEntry(const uint32_t index, const bool del) {
+    if(index >= current_index)
+        throw std::range_error("Requested mail entry does not exist!");
 
-    rebuildStructure();
+    std::ifstream file(filename, std::ios::binary);
+    const auto buf = new char[4];
+    uint32_t tmp;
+
+    file.seekg(8+(index*4));
+    file.read(buf, 4);
+    memcpy(&tmp, buf, 4);
+
+    file.seekg(max_size*4+8+tmp);
+
+    uint32_t size;
+    file.read(buf, 4);
+    memcpy(&size, buf, 4);
+
+    uint32_t checksum;
+    file.read(buf, 4);
+    memcpy(&checksum, buf, 4);
+
+    file.close();
+
+    const char* content = new char[size];
+    if(crc32(content, size) != checksum)
+        throw std::runtime_error("Mail entry checksum mismatch!");
+
+    auto* entry = new MailboxEntry(content, size);
+
+    delete[] buf;
+    delete[] content;
+
+    if(del)
+        deleteEntry(index);
+
+    return entry;
 }
 
 void MailBox::deleteEntry(uint32_t index) {
