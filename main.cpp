@@ -21,5 +21,17 @@ int main() {
     mb->deleteEntry(0);
     printMb(mb);
 
+    mb->addEntry(new MailboxEntry("test 1"));
+    mb->addEntry(new MailboxEntry("test 2"));
+
+    mb->deleteEntry(1);
+    printMb(mb);
+
+    for(int i = 0; i < mb->getEntriesCount(); i++) {
+        auto* entry = mb->readEntry(i);
+        printf("Entry #%d:\n  %s\n", i, entry->getContent().c_str());
+        delete entry;
+    }
+
     return 0;
 }

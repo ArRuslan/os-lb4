@@ -30,7 +30,7 @@ uint32_t readUint32(std::ifstream& file) {
 
 
 MailboxEntry::MailboxEntry(const char* content, const uint32_t size) {
-    this->content_size = size;
+    this->content_size = content[size-1] == '\0' ? size - 1 : size;
     this->content = new char[size];
     memcpy(this->content, content, size);
 
@@ -44,6 +44,11 @@ MailboxEntry::MailboxEntry(const std::string& content) {
 
     this->checksum = crc32(this->content, this->content_size);
 }
+
+std::string MailboxEntry::getContent() {
+    return std::string(content);
+}
+
 
 void MailboxEntry::write(std::ofstream& file) {
     memcpy(UINT_RW_ARR, &content_size, 4);
@@ -154,13 +159,15 @@ MailboxEntry* MailBox::readEntry(const uint32_t index, const bool del) {
     uint32_t size = readUint32(file);
     uint32_t checksum = readUint32(file);
 
+    char* content = new char[size+1];
+    file.read(content, size);
+    content[size] = '\0';
     file.close();
 
-    const char* content = new char[size];
     if(crc32(content, size) != checksum)
         throw std::runtime_error("Mail entry checksum mismatch!");
 
-    auto* entry = new MailboxEntry(content, size);
+    auto* entry = new MailboxEntry(content, size+1);
 
     delete[] content;
 

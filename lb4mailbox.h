@@ -10,6 +10,8 @@ public:
     MailboxEntry(const char* content, uint32_t size);
     MailboxEntry(const std::string& content);
 
+    std::string getContent();
+
     void write(std::ofstream& file);
 private:
     uint32_t content_size;
