@@ -2,6 +2,9 @@
 
 #include <cstring>
 #include <fstream>
+#include <filesystem>
+
+char UINT_RW_ARR[4];
 
 uint32_t crc32(const char* buf, uint32_t size) {
     uint32_t crc = 0xFFFFFFFF;
@@ -12,6 +15,19 @@ uint32_t crc32(const char* buf, uint32_t size) {
     }
     return ~crc;
 }
+
+uint32_t readUint32(std::fstream& file) {
+    uint32_t result;
+    file.read(UINT_RW_ARR, 4);
+    memcpy(&result, UINT_RW_ARR, 4);
+
+    return result;
+}
+
+uint32_t readUint32(std::ifstream& file) {
+    return readUint32((std::fstream&)file);
+}
+
 
 MailboxEntry::MailboxEntry(const char* content, const uint32_t size) {
     this->content_size = size;
@@ -30,12 +46,12 @@ MailboxEntry::MailboxEntry(const std::string& content) {
 }
 
 void MailboxEntry::write(std::ofstream& file) {
-    const auto buf = new char[4];
-    memcpy(buf, &content_size, 4);
-    file.write(buf, 4);
-    memcpy(buf, &checksum, 4);
-    file.write(buf, 4);
-    delete[] buf;
+    memcpy(UINT_RW_ARR, &content_size, 4);
+    file.write(UINT_RW_ARR, 4);
+
+    memcpy(UINT_RW_ARR, &checksum, 4);
+    file.write(UINT_RW_ARR, 4);
+
     file.write(content, content_size);
 }
 
@@ -43,13 +59,8 @@ MailBox::MailBox(const std::string& name) {
     filename = name;
 
     std::ifstream file(name, std::ios::binary);
-    const auto buf = new char[4];
-    file.read(buf, 4);
-    memcpy(&max_size, buf, 4);
-    file.read(buf, 4);
-    memcpy(&current_index, buf, 4);
-
-    delete[] buf;
+    max_size = readUint32(file);
+    current_index = readUint32(file);
 
     file.seekg(0, std::ios::end);
     const long size = file.tellg();
@@ -60,16 +71,19 @@ MailBox::MailBox(const std::string& name) {
 
 MailBox::MailBox(const std::string& name, const uint32_t max_size) {
     filename = name;
+    this->max_size = max_size;
 
     std::ofstream file(name, std::ios::binary | std::ios::trunc);
-    const auto buf = new char[4];
-    memcpy(buf, &max_size, 4);
-    file.write(buf, 4);
-    memcpy(buf, &current_index, 4);
-    file.write(buf, 4);
+    memcpy(UINT_RW_ARR, &max_size, 4);
+    file.write(UINT_RW_ARR, 4);
+    memcpy(UINT_RW_ARR, &current_index, 4);
+    file.write(UINT_RW_ARR, 4);
 
-    for(int i = 0; i < max_size; i++)
-        file.write(buf, 4);
+    uint32_t tmp = 0;
+    for(int i = 0; i < max_size; i++) {
+        memcpy(UINT_RW_ARR, &tmp, 4);
+        file.write(UINT_RW_ARR, 4);
+    }
 
     file.close();
 }
@@ -86,23 +100,19 @@ uint64_t MailBox::getCurrentSize() {
     std::ifstream file(filename, std::ios::binary);
     uint64_t total_size = 0;
 
-    const auto buf = new char[4];
-    uint32_t tmp;
+    file.seekg(8);
+
     for(uint32_t i = 0; i < current_index; i++) {
-        file.read(buf, 4);
-        memcpy(&tmp, buf, 4);
+        uint32_t tmp = readUint32(file);
 
         uint32_t current_pos = file.tellg();
         file.seekg(max_size*4+8+tmp);
 
-        file.read(buf, 4);
-        memcpy(&tmp, buf, 4);
-        total_size += tmp;
+        total_size += readUint32(file);
 
         file.seekg(current_pos);
     }
 
-    delete[] buf;
     file.close();
 
     return total_size;
@@ -114,20 +124,18 @@ void MailBox::addEntry(MailboxEntry* entry) {
 
     std::ofstream file(filename, std::ios::ate | std::ios::in | std::ios::out | std::ios::binary);
 
-    const uint32_t ptr = file.tellp();
+    const uint32_t ptr = (long)file.tellp() - (max_size*4+8);
     entry->write(file);
 
-    const auto buf = new char[4];
-
     file.seekp(current_index*4+8);
-    memcpy(buf, &ptr, 4);
-    file.write(buf, 4);
+    memcpy(UINT_RW_ARR, &ptr, 4);
+    file.write(UINT_RW_ARR, 4);
 
     current_index++;
 
     file.seekp(4);
-    memcpy(buf, &current_index, 4);
-    file.write(buf, 4);
+    memcpy(UINT_RW_ARR, &current_index, 4);
+    file.write(UINT_RW_ARR, 4);
 
     file.close();
 }
@@ -137,22 +145,14 @@ MailboxEntry* MailBox::readEntry(const uint32_t index, const bool del) {
         throw std::range_error("Requested mail entry does not exist!");
 
     std::ifstream file(filename, std::ios::binary);
-    const auto buf = new char[4];
-    uint32_t tmp;
 
     file.seekg(8+(index*4));
-    file.read(buf, 4);
-    memcpy(&tmp, buf, 4);
+    uint32_t tmp = readUint32(file);
 
     file.seekg(max_size*4+8+tmp);
 
-    uint32_t size;
-    file.read(buf, 4);
-    memcpy(&size, buf, 4);
-
-    uint32_t checksum;
-    file.read(buf, 4);
-    memcpy(&checksum, buf, 4);
+    uint32_t size = readUint32(file);
+    uint32_t checksum = readUint32(file);
 
     file.close();
 
@@ -162,7 +162,6 @@ MailboxEntry* MailBox::readEntry(const uint32_t index, const bool del) {
 
     auto* entry = new MailboxEntry(content, size);
 
-    delete[] buf;
     delete[] content;
 
     if(del)
@@ -172,11 +171,64 @@ MailboxEntry* MailBox::readEntry(const uint32_t index, const bool del) {
 }
 
 void MailBox::deleteEntry(uint32_t index) {
-    //
+    if(index >= current_index)
+        throw std::range_error("Requested mail entry does not exist!");
+    std::fstream file(filename, std::ios::ate | std::ios::in | std::ios::out | std::ios::binary);
 
-    rebuildStructure();
-}
+    file.seekg(8+(index*4));
+    uint32_t tmp = readUint32(file);
+    file.seekg(8+(max_size*4) + tmp);
+    tmp = readUint32(file);
+    uint32_t bytes_to_move = tmp + 8;
 
-void MailBox::rebuildStructure() {
-    //
+    uint32_t indexes_to_move = current_index - index - 1;
+    char* indexes = new char[indexes_to_move * 4];
+
+    file.seekg(8 + (4 * index)+4);
+    file.read(indexes, indexes_to_move * 4);
+
+    file.seekp(8 + (4 * index));
+    file.write(indexes, indexes_to_move * 4);
+
+    delete[] indexes;
+
+    current_index--;
+
+    file.seekp(4);
+    memcpy(UINT_RW_ARR, &current_index, 4);
+    file.write(UINT_RW_ARR, 4);
+
+    file.seekg(8);
+    for(uint32_t i = index; i < current_index; i++) {
+        file.seekg(8+(i*4));
+        file.seekg(8+(max_size*4) + readUint32(file));
+        uint32_t size_to_move = readUint32(file) + 8;
+
+        char* to_move = new char[size_to_move];
+
+        file.seekg(-4, std::ios::cur);
+        long cur_pos = file.tellg();
+        file.read(to_move, size_to_move);
+
+        file.seekp(cur_pos - bytes_to_move);
+        file.write(to_move, size_to_move);
+
+        delete[] to_move;
+
+        file.seekg(8+(i*4));
+
+        tmp = readUint32(file);
+        tmp -= bytes_to_move;
+
+        file.seekp(8+(i*4));
+        memcpy(UINT_RW_ARR, &tmp, 4);
+        file.write(UINT_RW_ARR, 4);
+    }
+
+    file.seekg(0, std::ios::end);
+    uint32_t file_size = file.tellg();
+
+    file.close();
+
+    std::filesystem::resize_file(filename, file_size-bytes_to_move);
 }

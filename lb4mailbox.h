@@ -33,6 +33,4 @@ private:
     std::string filename;
     uint32_t max_size = 0;
     uint32_t current_index = 0;
-
-    void rebuildStructure();
 };
