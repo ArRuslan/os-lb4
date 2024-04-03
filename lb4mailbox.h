@@ -30,6 +30,9 @@ public:
     void addEntry(MailboxEntry* entry);
     MailboxEntry* readEntry(uint32_t index, bool del = false);
     void deleteEntry(uint32_t index);
+    void deleteAllEntries();
+
+    static uint32_t getMailboxCount();
 
 private:
     std::string filename;

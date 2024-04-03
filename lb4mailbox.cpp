@@ -239,3 +239,33 @@ void MailBox::deleteEntry(uint32_t index) {
 
     std::filesystem::resize_file(filename, file_size-bytes_to_move);
 }
+
+void MailBox::deleteAllEntries() {
+    const uint32_t tmp = 0;
+    current_index = 0;
+
+    std::fstream file(filename, std::ios::ate | std::ios::in | std::ios::out | std::ios::binary);
+    file.seekp(4);
+
+    memcpy(UINT_RW_ARR, &tmp, 4);
+    file.write(UINT_RW_ARR, 4);
+
+    for(int i = 0; i < current_index; i++) {
+        memcpy(UINT_RW_ARR, &tmp, 4);
+        file.write(UINT_RW_ARR, 4);
+    }
+
+    file.close();
+
+    std::filesystem::resize_file(filename, 8 + (max_size * 4));
+}
+
+uint32_t MailBox::getMailboxCount() {
+    uint32_t count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator("."))
+        if(entry.is_regular_file() && entry.path().extension() == ".mb")
+            count++;
+
+    return count;
+}
+
